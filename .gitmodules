@@ -1,0 +1,3 @@
+[submodule "youtube"]
+	path = youtube
+	url = https://gitlab.futo.org/videostreaming/plugins/youtube
