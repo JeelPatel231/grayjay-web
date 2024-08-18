@@ -3,20 +3,118 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
+  <style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f9f9f9;
+        margin: 0;
+        padding: 20px;
+    }
+    .grid-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+    }
+    .video-card {
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        transition: transform 0.2s;
+    }
+    .video-card:hover {
+        transform: scale(1.05);
+    }
+    .thumbnail {
+        width: 100%;
+        height: auto;
+    }
+    .video-info {
+        padding: 10px;
+    }
+    .video-title {
+        font-size: 16px;
+        font-weight: bold;
+        margin: 5px 0;
+    }
+    .video-title a {
+        text-decoration: none;
+        color: #333;
+    }
+    .video-title a:hover {
+        color: #0073e6;
+    }
+    .video-details {
+        font-size: 14px;
+        color: #555;
+    }
+    .channel-name {
+        font-weight: bold;
+    }
+</style>
   <script src="./web/WorkerAdapter.js"></script>
+  <div class="grid-container" id="videoGrid">
+    <!-- Video cards will be inserted here -->
+</div>
+
 
   <script>
     IS_TESTING = false
     const YoutubeWorker = new Worker("./web/worker.js");
     const YoutubeSource = new SourceWorkerAdapter(YoutubeWorker);
 
+    function renderVideos(videos) {
+        const videoGrid = document.getElementById('videoGrid');
+
+        videos.forEach(video => {
+            const videoCard = document.createElement('div');
+            videoCard.classList.add('video-card');
+
+            const thumbnailUrl = video.thumbnails.sources[0].url; // Use the first thumbnail
+            const videoTitle = video.name;
+            const channelName = video.author.name;
+            const views = video.viewCount;
+            const date = new Date(video.datetime * 1000);
+
+            const yyyy = date.getFullYear();
+            let mm = date.getMonth() + 1; // Months start at 0!
+            let dd = date.getDate();
+
+            if (dd < 10) dd = '0' + dd;
+            if (mm < 10) mm = '0' + mm;
+
+            const formattedDate = dd + '/' + mm + '/' + yyyy;
+            const videoLength = video.duration;
+            const videoUrl = video.url;
+            const channelUrl = video.author.url;
+
+            videoCard.innerHTML = `
+                <img src="${thumbnailUrl}" alt="${videoTitle}" class="thumbnail">
+                <div class="video-info">
+                    <div class="video-title">
+                        <a href="${videoUrl}" target="_blank">${videoTitle}</a>
+                    </div>
+                    <div class="video-details">
+                        <span class="channel-name"><a href="${channelUrl}" target="_blank">${channelName}</a></span><br>
+                        Views: ${views} • Date: ${formattedDate} • Length: ${videoLength} s
+                    </div>
+                </div>
+            `;
+
+            videoGrid.appendChild(videoCard);
+        });
+    }
+
+
     async function main() {
       await YoutubeSource.enable()
+      console.log("searchCapabilities:")
       console.log(await YoutubeSource.getSearchCapabilities())
       
-      const q = await YoutubeSource.search("c418 aria math")
+      const q = await YoutubeSource.search("veritasium")
+    
       console.log(q)
+      renderVideos(q.results);
     }
 
     main()
@@ -25,6 +123,5 @@
   <title>Youtube  Plugin</title>
 </head>
 <body>
-  Youtube Plugin
 </body>
 </html>
