@@ -21,5 +21,5 @@ addEventListener("message", (e) => {
     data: source[name](...args) 
   }
 
-  postMessage(returnData)
+  postMessage(JSON.parse(JSON.stringify(returnData)))
 })
