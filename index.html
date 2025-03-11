@@ -53,9 +53,12 @@
     }
 </style>
   <script src="./web/WorkerAdapter.js"></script>
+  <video autoplay controls height="500px" style="display: none;" id="video-player">
+  </video>
   <div class="grid-container" id="videoGrid">
     <!-- Video cards will be inserted here -->
 </div>
+
 
 
   <script>
@@ -92,7 +95,7 @@
                 <img src="${thumbnailUrl}" alt="${videoTitle}" class="thumbnail">
                 <div class="video-info">
                     <div class="video-title">
-                        <a href="${videoUrl}" target="_blank">${videoTitle}</a>
+                        <span onclick="playVideo('${videoUrl}')">${videoTitle}</span>
                     </div>
                     <div class="video-details">
                         <span class="channel-name"><a href="${channelUrl}" target="_blank">${channelName}</a></span><br>
@@ -113,8 +116,17 @@
       
       const q = await YoutubeSource.search("veritasium")
     
-      console.log(q)
       renderVideos(q.results);
+
+    }
+
+    async function playVideo(url) {
+        const videoEl = document.getElementById('video-player')
+        const firstVideo = await YoutubeSource.getContentDetails(url)
+        const bestVideo = firstVideo.video.videoSources.sort((a, b) => b.height - a.height)[0]
+
+        videoEl.src = bestVideo.url
+        videoEl.style.display = 'unset'
     }
 
     main()

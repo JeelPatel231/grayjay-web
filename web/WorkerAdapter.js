@@ -92,8 +92,8 @@ class SourceWorkerAdapter {
     return this.callFunction(this.isVideoDetailsUrl.name, arguments)
   }
 
-  getVideoDetails(url){
-    return this.callFunction(this.getVideoDetails.name, arguments)
+  getContentDetails(url){
+    return this.callFunction(this.getContentDetails.name, arguments)
   }
 
   //Optional
