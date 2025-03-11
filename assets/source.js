@@ -1,4 +1,4 @@
-var IS_TESTING = true;
+var IS_TESTING = false;
 
 let Type = {
     Source: {
@@ -11,7 +11,8 @@ let Type = {
         Streams: "STREAMS",
         Mixed: "MIXED",
         Live: "LIVE",
-        Subscriptions: "SUBSCRIPTIONS"
+        Subscriptions: "SUBSCRIPTIONS",
+        Shorts: "SHORTS"
     },
     Order: {
         Chronological: "CHRONOLOGICAL"
@@ -61,7 +62,7 @@ let Language = {
 
 class ScriptException extends Error {
     constructor(type, msg) {
-        if(arguments.length == 1) {
+        if (arguments.length == 1) {
             super(arguments[0]);
             this.plugin_type = "ScriptException";
             this.message = arguments[0];
@@ -150,8 +151,8 @@ class ResultCapabilities {
 }
 class FilterGroup {
     constructor(name, filters, isMultiSelect, id) {
-        if(!name) throw new ScriptException("No name for filter group");
-        if(!filters) throw new ScriptException("No filter provided");
+        if (!name) throw new ScriptException("No name for filter group");
+        if (!filters) throw new ScriptException("No filter provided");
 
         this.name = name
         this.filters = filters
@@ -161,8 +162,8 @@ class FilterGroup {
 }
 class FilterCapability {
     constructor(name, value, id) {
-        if(!name) throw new ScriptException("No name for filter");
-        if(!value) throw new ScriptException("No filter value");
+        if (!name) throw new ScriptException("No name for filter");
+        if (!value) throw new ScriptException("No filter value");
 
         this.name = name;
         this.value = value;
@@ -177,9 +178,9 @@ class PlatformAuthorLink {
         this.name = name ?? ""; //string
         this.url = url ?? ""; //string
         this.thumbnail = thumbnail; //string
-        if(subscribers)
+        if (subscribers)
             this.subscribers = subscribers;
-        if(membershipUrl)
+        if (membershipUrl)
             this.membershipUrl = membershipUrl ?? null; //string (for backcompat)
     }
 }
@@ -189,9 +190,9 @@ class PlatformAuthorMembershipLink {
         this.name = name ?? ""; //string
         this.url = url ?? ""; //string
         this.thumbnail = thumbnail; //string
-        if(subscribers)
+        if (subscribers)
             this.subscribers = subscribers;
-        if(membershipUrl)
+        if (membershipUrl)
             this.membershipUrl = membershipUrl ?? null; //string
     }
 }
@@ -201,7 +202,7 @@ class PlatformContent {
         obj = obj ?? {};
         this.id = obj.id ?? PlatformID();   //PlatformID
         this.name = obj.name ?? ""; //string
-        this.thumbnails = obj.thumbnails; //Thumbnail[]
+        this.thumbnails = obj.thumbnails ?? new Thumbnails([]); //Thumbnail[]
         this.author = obj.author; //PlatformAuthorLink
         this.datetime = obj.datetime ?? obj.uploadDate ?? 0; //OffsetDateTime (Long)
         this.url = obj.url ?? ""; //String
@@ -244,6 +245,7 @@ class PlatformVideo extends PlatformContent {
         this.viewCount = obj.viewCount ?? -1; //Long
 
         this.isLive = obj.isLive ?? false; //Boolean
+        this.isShort = !!obj.isShort ?? false;
     }
 }
 class PlatformVideoDetails extends PlatformVideo {
@@ -260,6 +262,11 @@ class PlatformVideoDetails extends PlatformVideo {
 
         this.rating = obj.rating ?? null; //IRating
         this.subtitles = obj.subtitles ?? [];
+        this.isShort = !!obj.isShort ?? false;
+
+        if (obj.getContentRecommendations) {
+            this.getContentRecommendations = obj.getContentRecommendations
+        }
     }
 }
 
@@ -278,11 +285,48 @@ class PlatformPostDetails extends PlatformPost {
         super(obj);
         obj = obj ?? {};
         this.plugin_type = "PlatformPostDetails";
-        this.rating = obj.rating ?? RatingLikes(-1);
+        this.rating = obj.rating ?? new RatingLikes(-1);
         this.textType = obj.textType ?? 0;
         this.content = obj.content ?? "";
     }
 }
+
+class PlatformArticleDetails extends PlatformContent {
+    constructor(obj) {
+        super(obj, 3);
+        obj = obj ?? {};
+        this.plugin_type = "PlatformArticleDetails";
+        this.rating = obj.rating ?? new RatingLikes(-1);
+        this.summary = obj.summary ?? "";
+        this.segments = obj.segments ?? [];
+        this.thumbnails = obj.thumbnails ?? new Thumbnails([]);
+    }
+}
+class ArticleSegment {
+    constructor(type) {
+        this.type = type;
+    }
+}
+class ArticleTextSegment extends ArticleSegment {
+    constructor(content, textType) {
+        super(1);
+        this.textType = textType;
+        this.content = content;
+    }
+}
+class ArticleImagesSegment extends ArticleSegment {
+    constructor(images) {
+        super(2);
+        this.images = images;
+    }
+}
+class ArticleNestedSegment extends ArticleSegment {
+    constructor(nested) {
+        super(9);
+        this.nested = nested;
+    }
+}
+
 
 //Sources
 class VideoSourceDescriptor {
@@ -291,7 +335,7 @@ class VideoSourceDescriptor {
         this.plugin_type = "MuxVideoSourceDescriptor";
         this.isUnMuxed = false;
 
-        if(obj.constructor === Array)
+        if (obj.constructor === Array)
             this.videoSources = obj;
         else
             this.videoSources = obj.videoSources ?? [];
@@ -303,7 +347,7 @@ class UnMuxVideoSourceDescriptor {
         this.plugin_type = "UnMuxVideoSourceDescriptor";
         this.isUnMuxed = true;
 
-        if(videoSourcesOrObj.constructor === Array) {
+        if (videoSourcesOrObj.constructor === Array) {
             this.videoSources = videoSourcesOrObj;
             this.audioSources = audioSources;
         }
@@ -326,8 +370,18 @@ class VideoUrlSource {
         this.bitrate = obj.bitrate ?? 0;
         this.duration = obj.duration ?? 0;
         this.url = obj.url;
-        if(obj.requestModifier)
+        if (obj.requestModifier)
             this.requestModifier = obj.requestModifier;
+    }
+}
+class VideoUrlWidevineSource extends VideoUrlSource {
+    constructor(obj) {
+        super(obj);
+        this.plugin_type = "VideoUrlWidevineSource";
+
+        this.licenseUri = obj.licenseUri;
+        if (obj.getLicenseRequestExecutor)
+            this.getLicenseRequestExecutor = obj.getLicenseRequestExecutor;
     }
 }
 class VideoUrlRangeSource extends VideoUrlSource {
@@ -335,11 +389,11 @@ class VideoUrlRangeSource extends VideoUrlSource {
         super(obj);
         this.plugin_type = "VideoUrlRangeSource";
 
-		this.itagId = obj.itagId ?? null;
-		this.initStart = obj.initStart ?? null;
-		this.initEnd = obj.initEnd ?? null;
-		this.indexStart = obj.indexStart ?? null;
-		this.indexEnd = obj.indexEnd ?? null;
+        this.itagId = obj.itagId ?? null;
+        this.initStart = obj.initStart ?? null;
+        this.initEnd = obj.initEnd ?? null;
+        this.indexStart = obj.indexStart ?? null;
+        this.indexEnd = obj.indexEnd ?? null;
     }
 }
 class AudioUrlSource {
@@ -353,8 +407,35 @@ class AudioUrlSource {
         this.duration = obj.duration ?? 0;
         this.url = obj.url;
         this.language = obj.language ?? Language.UNKNOWN;
-        if(obj.requestModifier)
+        if (obj.requestModifier)
             this.requestModifier = obj.requestModifier;
+    }
+}
+class AudioUrlWidevineSource extends AudioUrlSource {
+    constructor(obj) {
+        super(obj);
+        this.plugin_type = "AudioUrlWidevineSource";
+
+        this.licenseUri = obj.licenseUri;
+        if (obj.getLicenseRequestExecutor)
+            this.getLicenseRequestExecutor = obj.getLicenseRequestExecutor;
+
+        // deprecated api conversion
+        if (obj.bearerToken) {
+            this.getLicenseRequestExecutor = () => {
+                return {
+                    executeRequest: (url, _headers, _method, license_request_data) => {
+                        return http.POST(
+                            url,
+                            license_request_data,
+                            { Authorization: `Bearer ${obj.bearerToken}` },
+                            false,
+                            true
+                        ).body
+                    }
+                }
+            }
+        }
     }
 }
 class AudioUrlRangeSource extends AudioUrlSource {
@@ -362,12 +443,12 @@ class AudioUrlRangeSource extends AudioUrlSource {
         super(obj);
         this.plugin_type = "AudioUrlRangeSource";
 
-		this.itagId = obj.itagId ?? null;
-		this.initStart = obj.initStart ?? null;
-		this.initEnd = obj.initEnd ?? null;
-		this.indexStart = obj.indexStart ?? null;
-		this.indexEnd = obj.indexEnd ?? null;
-		this.audioChannels = obj.audioChannels ?? 2;
+        this.itagId = obj.itagId ?? null;
+        this.initStart = obj.initStart ?? null;
+        this.initEnd = obj.initEnd ?? null;
+        this.indexStart = obj.indexStart ?? null;
+        this.indexEnd = obj.indexEnd ?? null;
+        this.audioChannels = obj.audioChannels ?? 2;
     }
 }
 class HLSSource {
@@ -378,9 +459,9 @@ class HLSSource {
         this.duration = obj.duration ?? 0;
         this.url = obj.url;
         this.priority = obj.priority ?? false;
-        if(obj.language)
+        if (obj.language)
             this.language = obj.language;
-        if(obj.requestModifier)
+        if (obj.requestModifier)
             this.requestModifier = obj.requestModifier;
     }
 }
@@ -391,12 +472,55 @@ class DashSource {
         this.name = obj.name ?? "Dash";
         this.duration = obj.duration ?? 0;
         this.url = obj.url;
-        if(obj.language)
+        if (obj.language)
             this.language = obj.language;
-        if(obj.requestModifier)
+        if (obj.requestModifier)
             this.requestModifier = obj.requestModifier;
     }
 }
+class DashWidevineSource extends DashSource {
+    constructor(obj) {
+        super(obj);
+        this.plugin_type = "DashWidevineSource";
+
+        this.licenseUri = obj.licenseUri;
+        if (obj.getLicenseRequestExecutor)
+            this.getLicenseRequestExecutor = obj.getLicenseRequestExecutor;
+    }
+}
+class DashManifestRawSource {
+    constructor(obj) {
+        obj = obj ?? {};
+        this.plugin_type = "DashRawSource";
+        this.name = obj.name ?? "";
+        this.bitrate = obj.bitrate ?? 0;
+        this.container = obj.container ?? "";
+        this.codec = obj.codec ?? "";
+        this.duration = obj.duration ?? 0;
+        this.url = obj.url;
+        this.language = obj.language ?? Language.UNKNOWN;
+        if (obj.requestModifier)
+            this.requestModifier = obj.requestModifier;
+    }
+}
+
+class DashManifestRawAudioSource {
+    constructor(obj) {
+        obj = obj ?? {};
+        this.plugin_type = "DashRawAudioSource";
+        this.name = obj.name ?? "";
+        this.bitrate = obj.bitrate ?? 0;
+        this.container = obj.container ?? "";
+        this.codec = obj.codec ?? "";
+        this.duration = obj.duration ?? 0;
+        this.url = obj.url;
+        this.language = obj.language ?? Language.UNKNOWN;
+        this.manifest = obj.manifest ?? null;
+        if (obj.requestModifier)
+            this.requestModifier = obj.requestModifier;
+    }
+}
+
 
 class RequestModifier {
     constructor(obj) {
@@ -418,7 +542,7 @@ class PlatformChannel {
         this.description = obj.description; //string
         this.url = obj.url ?? ""; //string
         this.urlAlternatives = obj.urlAlternatives ?? [];
-        this.links = obj.links ?? {  } //Map<string,string>
+        this.links = obj.links ?? {} //Map<string,string>
     }
 }
 
@@ -427,11 +551,11 @@ class PlatformPlaylist extends PlatformContent {
     constructor(obj) {
         super(obj, 4);
         this.plugin_type = "PlatformPlaylist";
-        this.videoCount = obj.videoCount ?? 0;
+        this.videoCount = obj.videoCount ?? -1;
         this.thumbnail = obj.thumbnail;
     }
 }
-class PlatformPlaylistDetails extends PlatformPlaylist  {
+class PlatformPlaylistDetails extends PlatformPlaylist {
     constructor(obj) {
         super(obj);
         this.plugin_type = "PlatformPlaylistDetails";
@@ -448,7 +572,7 @@ class RatingLikes {
     }
 }
 class RatingLikesDislikes {
-    constructor(likes,dislikes) {
+    constructor(likes, dislikes) {
         this.type = 2;
         this.likes = likes;
         this.dislikes = dislikes;
@@ -483,7 +607,7 @@ class Comment extends PlatformComment {
 
 class PlaybackTracker {
     constructor(interval) {
-        this.nextRequest = interval ?? 10*1000;
+        this.nextRequest = interval ?? 10 * 1000;
     }
     setProgress(seconds) {
         throw new ScriptImplementationException("Missing required setProgress(seconds) on PlaybackTracker");
@@ -620,22 +744,22 @@ let plugin = {
 const source = {
     getHome() { return new ContentPager([], false, {}); },
 
-    enable(config){  },
-    disable() {},
+    enable(config) { },
+    disable() { },
 
-    searchSuggestions(query){ return []; },
-    getSearchCapabilities(){ return { types: [], sorts: [] }; },
-    search(query, type, order, filters){ return new ContentPager([], false, {}); }, //TODO
+    searchSuggestions(query) { return []; },
+    getSearchCapabilities() { return { types: [], sorts: [] }; },
+    search(query, type, order, filters) { return new ContentPager([], false, {}); }, //TODO
     //OPTIONAL getSearchChannelContentsCapabilities(){ return { types: [], sorts: [] }; },
     //OPTIONAL searchChannelContents(channelUrl, query, type, order, filters){ return new Pager([], false, {}); }, //TODO
 
-    isChannelUrl(url){ return false; },
-    getChannel(url){ return null; },
-    getChannelCapabilities(){ return { types: [], sorts: [] }; },
+    isChannelUrl(url) { return false; },
+    getChannel(url) { return null; },
+    getChannelCapabilities() { return { types: [], sorts: [] }; },
     getChannelContents(url, type, order, filters) { return new ContentPager([], false, {}); },
 
-    isContentDetailsUrl(url){ return false; },
-    getContentDetails(url){  }, //TODO
+    isContentDetailsUrl(url) { return false; },
+    getContentDetails(url) { }, //TODO
 
     //OPTIONAL getComments(url){ return new Pager([], false, {}); }, //TODO
     //OPTIONAL getSubComments(comment){ return new Pager([], false, {}); }, //TODO
@@ -645,11 +769,11 @@ const source = {
 };
 
 function parseSettings(settings) {
-    if(!settings)
+    if (!settings)
         return {};
     let newSettings = {};
-    for(let key in settings) {
-        if(typeof settings[key] == "string")
+    for (let key in settings) {
+        if (typeof settings[key] == "string")
             newSettings[key] = JSON.parse(settings[key]);
         else
             newSettings[key] = settings[key];
@@ -658,9 +782,9 @@ function parseSettings(settings) {
 }
 
 function log(str) {
-    if(str) {
+    if (str) {
         console.log(str);
-        if(typeof str == "string")
+        if (typeof str == "string")
             bridge.log(str);
         else
             bridge.log(JSON.stringify(str, null, 4));
@@ -668,7 +792,7 @@ function log(str) {
 }
 
 function encodePathSegment(segment) {
-    return encodeURIComponent(segment).replace(/[!'()*]/g, function (c) {
+    return encodeURIComponent(segment).replace(/[!'()*]/g, function(c) {
         return '%' + c.charCodeAt(0).toString(16);
     });
 }
@@ -753,3 +877,99 @@ class URLSearchParams {
         return searchString;
     }
 }
+
+
+var __REGEX_SPACE_CHARACTERS = /<%= spaceCharacters %>/g;
+var __btoa_TABLE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function btoa(input) {
+    input = String(input);
+    if (/[^\0-\xFF]/.test(input)) {
+        // Note: no need to special-case astral symbols here, as surrogates are
+        // matched, and the input is supposed to only contain ASCII anyway.
+        error(
+            'The string to be encoded contains characters outside of the ' +
+            'Latin1 range.'
+        );
+    }
+    var padding = input.length % 3;
+    var output = '';
+    var position = -1;
+    var a;
+    var b;
+    var c;
+    var buffer;
+    // Make sure any padding is handled outside of the loop.
+    var length = input.length - padding;
+
+    while (++position < length) {
+        // Read three bytes, i.e. 24 bits.
+        a = input.charCodeAt(position) << 16;
+        b = input.charCodeAt(++position) << 8;
+        c = input.charCodeAt(++position);
+        buffer = a + b + c;
+        // Turn the 24 bits into four chunks of 6 bits each, and append the
+        // matching character for each of them to the output.
+        output += (
+            __btoa_TABLE.charAt(buffer >> 18 & 0x3F) +
+            __btoa_TABLE.charAt(buffer >> 12 & 0x3F) +
+            __btoa_TABLE.charAt(buffer >> 6 & 0x3F) +
+            __btoa_TABLE.charAt(buffer & 0x3F)
+        );
+    }
+
+    if (padding == 2) {
+        a = input.charCodeAt(position) << 8;
+        b = input.charCodeAt(++position);
+        buffer = a + b;
+        output += (
+            __btoa_TABLE.charAt(buffer >> 10) +
+            __btoa_TABLE.charAt((buffer >> 4) & 0x3F) +
+            __btoa_TABLE.charAt((buffer << 2) & 0x3F) +
+            '='
+        );
+    } else if (padding == 1) {
+        buffer = input.charCodeAt(position);
+        output += (
+            __btoa_TABLE.charAt(buffer >> 2) +
+            __btoa_TABLE.charAt((buffer << 4) & 0x3F) +
+            '=='
+        );
+    }
+
+    return output;
+};
+function atob(input) {
+    input = String(input)
+        .replace(__REGEX_SPACE_CHARACTERS, '');
+    var length = input.length;
+    if (length % 4 == 0) {
+        input = input.replace(/==?$/, '');
+        length = input.length;
+    }
+    if (
+        length % 4 == 1 ||
+        // http://whatwg.org/C#alphanumeric-ascii-characters
+        /[^+a-zA-Z0-9/]/.test(input)
+    ) {
+        error(
+            'Invalid character: the string to be decoded is not correctly encoded.'
+        );
+    }
+    var bitCounter = 0;
+    var bitStorage;
+    var buffer;
+    var output = '';
+    var position = -1;
+    while (++position < length) {
+        buffer = __btoa_TABLE.indexOf(input.charAt(position));
+        bitStorage = bitCounter % 4 ? bitStorage * 64 + buffer : buffer;
+        // Unless this is the first of a group of 4 characters…
+        if (bitCounter++ % 4) {
+            // …convert the first 8 bits to a single ASCII character.
+            output += String.fromCharCode(
+                0xFF & bitStorage >> (-2 * bitCounter & 6)
+            );
+        }
+    }
+    return output;
+};
